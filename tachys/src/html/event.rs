@@ -187,7 +187,20 @@ where
             }
         }
 
-        let mut cb = self.cb.expect("callback removed before attaching").take();
+        let Some(cb_wrapper) = self.cb else {
+            // Callback was already consumed (e.g., by into_cloneable on a prior copy).
+            // This is a framework-internal issue but should not crash the application.
+            #[cfg(debug_assertions)]
+            web_sys::console::warn_1(
+                &"[tachys] Event callback was None at attach() - skipping event listener"
+                    .into(),
+            );
+            return RemoveEventHandler::new({
+                let el = el.clone();
+                move || { let _ = el; }
+            });
+        };
+        let mut cb = cb_wrapper.take();
 
         #[cfg(feature = "tracing")]
         let span = tracing::Span::current();
@@ -230,7 +243,18 @@ where
             Rndr::add_event_listener_use_capture(el, &name, cb)
         }
 
-        let mut cb = self.cb.expect("callback removed before attaching").take();
+        let Some(cb_wrapper) = self.cb else {
+            #[cfg(debug_assertions)]
+            web_sys::console::warn_1(
+                &"[tachys] Event callback was None at attach_capture() - skipping"
+                    .into(),
+            );
+            return RemoveEventHandler::new({
+                let el = el.clone();
+                move || { let _ = el; }
+            });
+        };
+        let mut cb = cb_wrapper.take();
 
         #[cfg(feature = "tracing")]
         let span = tracing::Span::current();
