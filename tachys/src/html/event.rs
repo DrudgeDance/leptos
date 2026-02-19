@@ -113,7 +113,10 @@ where
         event,
         #[cfg(feature = "reactive_graph")]
         owner: reactive_graph::owner::Owner::current().unwrap_or_default(),
-        cb: (!cfg!(feature = "ssr")).then(|| SendWrapper::new(cb)),
+        #[cfg(not(feature = "ssr"))]
+        cb: SendWrapper::new(cb),
+        #[cfg(feature = "ssr")]
+        _cb: std::marker::PhantomData,
     }
 }
 
@@ -140,7 +143,12 @@ pub struct On<E, F> {
     event: E,
     #[cfg(feature = "reactive_graph")]
     owner: reactive_graph::owner::Owner,
-    cb: Option<SendWrapper<F>>,
+    /// In CSR mode, the callback is always present (never None).
+    /// In SSR mode, the callback is not needed; we use PhantomData to keep the type parameter.
+    #[cfg(not(feature = "ssr"))]
+    cb: SendWrapper<F>,
+    #[cfg(feature = "ssr")]
+    _cb: std::marker::PhantomData<F>,
 }
 
 impl<E, F> Clone for On<E, F>
@@ -153,7 +161,10 @@ where
             event: self.event.clone(),
             #[cfg(feature = "reactive_graph")]
             owner: self.owner.clone(),
+            #[cfg(not(feature = "ssr"))]
             cb: self.cb.clone(),
+            #[cfg(feature = "ssr")]
+            _cb: std::marker::PhantomData,
         }
     }
 }
@@ -166,6 +177,7 @@ where
     E::EventType: From<crate::renderer::types::Event>,
 {
     /// Attaches the event listener to the element.
+    #[cfg(not(feature = "ssr"))]
     pub fn attach(
         self,
         el: &crate::renderer::types::Element,
@@ -187,7 +199,7 @@ where
             }
         }
 
-        let mut cb = self.cb.expect("callback removed before attaching").take();
+        let mut cb = self.cb.take();
 
         #[cfg(feature = "tracing")]
         let span = tracing::Span::current();
@@ -218,6 +230,7 @@ where
 
     /// Attaches the event listener to the element as a listener that is triggered during the capture phase,
     /// meaning it will fire before any event listeners further down in the DOM.
+    #[cfg(not(feature = "ssr"))]
     pub fn attach_capture(
         self,
         el: &crate::renderer::types::Element,
@@ -230,7 +243,7 @@ where
             Rndr::add_event_listener_use_capture(el, &name, cb)
         }
 
-        let mut cb = self.cb.expect("callback removed before attaching").take();
+        let mut cb = self.cb.take();
 
         #[cfg(feature = "tracing")]
         let span = tracing::Span::current();
@@ -336,7 +349,10 @@ where
 
     fn into_cloneable(self) -> Self::Cloneable {
         On {
-            cb: self.cb.map(|cb| SendWrapper::new(cb.take().into_shared())),
+            #[cfg(not(feature = "ssr"))]
+            cb: SendWrapper::new(self.cb.take().into_shared()),
+            #[cfg(feature = "ssr")]
+            _cb: std::marker::PhantomData,
             #[cfg(feature = "reactive_graph")]
             owner: self.owner,
             event: self.event,
@@ -345,7 +361,10 @@ where
 
     fn into_cloneable_owned(self) -> Self::CloneableOwned {
         On {
-            cb: self.cb.map(|cb| SendWrapper::new(cb.take().into_shared())),
+            #[cfg(not(feature = "ssr"))]
+            cb: SendWrapper::new(self.cb.take().into_shared()),
+            #[cfg(feature = "ssr")]
+            _cb: std::marker::PhantomData,
             #[cfg(feature = "reactive_graph")]
             owner: self.owner,
             event: self.event,
